@@ -35,6 +35,7 @@ void setup() {
   // initialize the LED pin as an output:
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
+  delay(250);
   
   // Initialize I2C
   Wire.begin();
@@ -46,6 +47,9 @@ void setup() {
   }
   
   digitalWrite(LED_PIN, LOW);
+  delay(250);
+  digitalWrite(LED_PIN, HIGH);
+  delay(250);
   
   // Initialize servos
   for(int i=0; i<NUM_CONTROL; i++) {
@@ -55,11 +59,18 @@ void setup() {
     //servos[i].write(90);
   }
   
+  digitalWrite(LED_PIN, LOW);
+  delay(250);
+  
   Serial.println("Start");
 }
 
 void loop() {
+  int a = HIGH;
   time = millis();
   
   WireSendArr(i2cAddr[0], startBSlow);
+  
+  digitalWrite(LED_PIN, a);
+  a = !a;
 }
