@@ -1,238 +1,65 @@
 #include "Wire.h"
+#include <Servo.h>
 
-// Gate 1 Up
-const int light = 13;    // testing
+#define NUM_CONTROL 4
+#define LED_PIN LED_BUILTIN  // 13
 
-const int turntable1 = A3;
-const int turntable2 = A2;
+// Choose to send I2C commands to only certain motors by setting its addres to 0.
+// If a motor is not connected but this program tries to send to it, then the
+// program will freeze.
+const byte i2cAddr[NUM_CONTROL] = {0x09, 0x00, 0x00, 0x00};
+//                                {0x09, 0x0A, 0x0B, 0x0E};
+const int servoPins[NUM_CONTROL] = {4, 5, 6, 7};
+Servo servos[NUM_CONTROL];
 
-const int eastgatelimit = A0;    // button 1
-const int westgatelimit = A1;    // button 2
+#define writeArr(A) (A, sizeof(A))
+#define WireSendArr(ADDR, DATA) Wire.beginTransmission(ADDR);\
+                                Wire.write(DATA, sizeof(DATA));\
+                                Wire.endTransmission();
+// First byte is address; the rest is data.
+byte disableB[] = {0x1, 0b00000000,0x0,0x0,0x0,0x0,0x0,0x0,0x0};
+byte startB[] = {0x1, 0b00010011,0x0,0x0,0x0,0x0,100,0x0,0x0};  // Mode (byte 1) and speed (bytes 4-7)
+byte startBSlow[] = {0x1, 0b00010011,0x0,0x0,0x0,0x0,30,0x0,0x0};
+byte stopB[] = {0x1, 0b00010011,0x0,0x0,0x0,0x0,0x0,0x0,0x0};
+byte reverseB[] = {0x1, 0b00010011,0x0,0x0,0x0,0x0,0x9C,0xFF,0x0};
+byte reverseBSlow[] = {0x1, 0b00010011,0x0,0x0,0x0,0x0,0xE2,0xFF,0x0};
+byte accelLimit[] = {0x90, 50, 0};  // Acceleration limit (pwm change per ms)
+byte currLimit[] = {0x82, 54, 0};  // Current limit, val=limit*(1024/5)*(1/1000)*(66), 54->4 Amps
+byte setToutB[] = {0x80, 0x0, 0x08};  // Timeout (ms)
 
-const int eastgate1 = 2;    // button 3
-const int eastgate2 = 3;    // button 4
-
-const int westgate1 = 0;    // button 5
-const int westgate2 = 1;    // button 6
-
-const int emstop = 4;    // Really necessary?  Just user power.
-const int maxcom = 5;
-
-//Bytes and Shit
-byte addrB1 = 0x0B;    // first grizzly address - Spinner 
-byte addrB2 = 0x0E;    // second grizzly address - Gate1
-byte addrB3 = 0x0F;    // third grizzly address - Gate2
-
-
-byte currLimitSpinner[3] = {0b00010011, 54, 0};
-byte startB[8] = {0b00010011,0x0,0x0,0x0,0x0,100,0x0,0x0};
-byte startBSlow[8] = {0b00010011,0x0,0x0,0x0,0x0,30,0x0,0x0};
-byte startBMedium[8] = {0b00010011,0x0,0x0,0x0,0x0,75,0x0,0x0};
-byte startBMediumSlow[8] = {0b00010011,0x0,0x0,0x0,0x0,65,0x0,0x0};
-byte stopB[8] = {0b00010011,0x0,0x0,0x0,0x0,0x0,0x0,0x0};
-byte reverseB[8] = {0b00010011,0x0,0x0,0x0,0x0,0x9C,0xFF,0x0};
-byte reverseBSlow[8] = {0b00010011,0x0,0x0,0x0,0x0,0xE2,0xFF,0x0};
-byte reverseBMedium[8] = {0b00010011,0x0,0x0,0x0,0x0,0x8B,0xFF,0x0};
-byte reverseBMediumSlow[8] = {0b00010011,0x0,0x0,0x0,0x0,0x9B,0xFF,0x0};
-byte noaccel[2] = {0b00010011, 20};
-byte setToutB[2] = {0x0, 0x08};
-
-const int ledPin = 13;      // the number of the LED pin
-int buttonState = 0;         // variable for reading the pushbutton status
-#define ON LOW
-#define OFF HIGH
-
-unsigned long time;
-unsigned long gate1timer;    // Lower after 8 seconds
-unsigned long gate2timer;
-unsigned long spinnertimer;
-
-boolean dir = true;
-
+unsigned long time = 0;
 
 void setup() {
-  //Serial.begin(9600);
-  //Serial.println("Started");
+  Serial.begin(230400);
+  Serial.println("Setup");
   // initialize the LED pin as an output:
-  pinMode(ledPin, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
   
   // Initialize I2C
   Wire.begin();
-  Wire.beginTransmission(addrB1);
-  Wire.write(0x90);
-  Wire.write(noaccel,2);
-  Wire.endTransmission();
-  Wire.beginTransmission(addrB1);
-  Wire.write(0x80);
-  Wire.write(setToutB,2);
-  Wire.endTransmission();
+  for(int i=0; i<NUM_CONTROL; i++) {
+    byte addr = i2cAddr[i];
+    if(!addr) continue;
+    WireSendArr(addr, accelLimit);
+    WireSendArr(addr, setToutB);
+  }
   
-  Wire.beginTransmission(addrB2);
-  Wire.write(0x90);
-  Wire.write(noaccel,2);
-  Wire.endTransmission();
-  Wire.beginTransmission(addrB2);
-  Wire.write(0x80);
-  Wire.write(setToutB,2);
-  Wire.endTransmission();
+  digitalWrite(LED_PIN, LOW);
   
-  Wire.beginTransmission(addrB3);
-  Wire.write(0x90);
-  Wire.write(noaccel,2);
-  Wire.endTransmission();
-  Wire.beginTransmission(addrB3);
-  Wire.write(0x80);
-  Wire.write(setToutB,2);
-  Wire.endTransmission();
+  // Initialize servos
+  for(int i=0; i<NUM_CONTROL; i++) {
+    int pin = servoPins[i];
+    if(pin < 0) continue;
+    servos[i].attach(pin);
+    //servos[i].write(90);
+  }
   
-  time = millis();
-  gate1timer=0;
-  gate2timer=0;
-  spinnertimer=0;
-
-  // Initialize buttons
-  //pinMode(light, INPUT);
-  
-  //digitalWrite(light, HIGH);
-  pinMode(eastgate1, INPUT);
-  digitalWrite(eastgate1, HIGH); 
-  pinMode(eastgate2, INPUT);
-  digitalWrite(eastgate2, HIGH); 
-  
-  pinMode(westgate1, INPUT);
-  digitalWrite(westgate1, HIGH); 
-  pinMode(westgate2, INPUT);
-  digitalWrite(westgate2, HIGH); 
-
-  pinMode(turntable1, INPUT);
-  digitalWrite(turntable1, HIGH); 
-  pinMode(turntable2, INPUT);
-  digitalWrite(turntable2, HIGH);
-  
-  pinMode(eastgatelimit, INPUT);
-  digitalWrite(eastgatelimit, HIGH); 
-  pinMode(westgatelimit, INPUT);
-  digitalWrite(westgatelimit, HIGH);
-  
-  pinMode(eastgatelimit, INPUT);
-  digitalWrite(eastgatelimit, HIGH); 
-  pinMode(westgatelimit, INPUT);
-  digitalWrite(westgatelimit, HIGH);
-  
-  pinMode(emstop, INPUT);
-  digitalWrite(emstop, HIGH); 
-  pinMode(maxcom, INPUT);
-  digitalWrite(maxcom, HIGH);
-  
-  // Serial.println("Started 2");
+  Serial.println("Start");
 }
 
 void loop() {
-  /*Serial.print(digitalRead(buttonPin1));
-  Serial.print(" ");
-  Serial.print(digitalRead(buttonPin2));
-  Serial.print(" ");
-  Serial.print(digitalRead(buttonPin3));
-  Serial.print(" ");
-  Serial.print(digitalRead(buttonPin4));
-  Serial.print(" ");
-  Serial.print(digitalRead(buttonPin5));
-  Serial.print(" ");
-  Serial.print(digitalRead(buttonPin6));
-  Serial.println(" ");*/
-  // Test stuff
-  if (digitalRead(light) == LOW) {
-    digitalWrite(ledPin, LOW);
-  }
-  else {
-    digitalWrite(ledPin, HIGH);
-    //Serial.write("this light should be on");
-  }
-    
   time = millis();
-  // West Gate
-  if (digitalRead(eastgate1) == LOW || digitalRead(eastgate2) == LOW) {
-      digitalWrite(ledPin, LOW);
-      if (gate1timer < time) {
-        gate1timer = time+10000;
-      }
-  }
-  // Going up
-  if ((time < gate1timer-9000) && (gate1timer > 0) && (digitalRead(eastgatelimit) != LOW)) {
-    Wire.beginTransmission(addrB2);
-    Wire.write(0x1);
-    Wire.write(startBMediumSlow,8);
-    Wire.endTransmission();
-  }
-  // Going down
-  else if ((time > gate1timer-1500) && (time < gate1timer)) {
-    Wire.beginTransmission(addrB2);
-    Wire.write(0x1);
-    Wire.write(reverseBMediumSlow,8);
-    Wire.endTransmission();
-  }
-  // Stopped
-  else {
-    Wire.beginTransmission(addrB2);
-    Wire.write(0x1);
-    Wire.write(stopB,8);
-    Wire.endTransmission();
-  }
-
-  // East Gate
-  if (digitalRead(westgate1) == LOW || digitalRead(westgate2) == LOW) {
-      digitalWrite(ledPin, LOW);
-      if (gate2timer < time) {
-        gate2timer = time+10000;
-      }
-  }
-  // Going up
-  if ((time < gate2timer-9000) && (gate2timer > 0) && (digitalRead(westgatelimit) != LOW)) {
-    Wire.beginTransmission(addrB3);
-    Wire.write(0x1);
-    Wire.write(startBMedium,8);
-    Wire.endTransmission();
-  }
-  // Going down
-  else if ((time > gate2timer-1500) && (time < gate2timer)) {
-    Wire.beginTransmission(addrB3);
-    Wire.write(0x1);
-    Wire.write(reverseBMedium,8);
-    Wire.endTransmission();
-  }
-  // Stopped
-  else {
-    Wire.beginTransmission(addrB3);
-    Wire.write(0x1);
-    Wire.write(stopB,8);
-    Wire.endTransmission();
-  }
-
-  // Spinner
-  if(digitalRead(turntable1) == LOW || digitalRead(turntable2) == LOW) {
-    if (spinnertimer < time) {
-      dir = !dir;
-      spinnertimer = time+5000;
-    }
-  }
-  if (digitalRead(maxcom) == LOW) {
-    Wire.beginTransmission(addrB1);
-    Wire.write(0x1);
-    Wire.write(stopB,8);
-    Wire.endTransmission();
-  }
-  else if(dir) {
-    //Serial.println("Forward");
-    Wire.beginTransmission(addrB1);
-    Wire.write(0x1);
-    Wire.write(startBSlow,8);
-    Wire.endTransmission();
-  }
-  else {
-    //Serial.println("Backward");
-    Wire.beginTransmission(addrB1);
-    Wire.write(0x1);
-    Wire.write(reverseBSlow,8);
-    Wire.endTransmission();
-  }
+  
+  WireSendArr(i2cAddr[0], startBSlow);
 }
