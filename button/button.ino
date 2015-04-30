@@ -29,6 +29,8 @@ byte reverseBSlow[] = {0x1, 0b00010011,0x0,0x0,0x0,0x0,0xE2,0xFF,0x0};
 byte accelLimit[] = {0x90, 50, 0};  // Acceleration limit (pwm change per ms)
 byte currLimit[] = {0x82, 54, 0};  // Current limit, val=limit*(1024/5)*(1/1000)*(66), 54->4 Amps
 byte setToutB[] = {0x80, 0xFA, 0x00};  // Timeout (ms)
+byte setPID[] = {0x30,   0, 0, 10, 0,   0x8F,0x02,0,0,   0x9A,0x19,0,0};  // PID=(10, .01, .1)
+byte pidTargetB[] = {0x1, 0b00010111, 0x0,0x0,  0x0,0x0,0x0,0x0,  0x0};  // Set target, mode=PID position
 
 // Command recieve
 #define HEADER_LEN 4
@@ -54,6 +56,7 @@ void setup() {
     if(!addr) continue;
     WireSendArr(addr, accelLimit);
     WireSendArr(addr, setToutB);
+    WireSendArr(addr, setPID);
   }
   
   digitalWrite(LED_PIN, LOW);
@@ -88,7 +91,6 @@ void loop() {
   }
   
   digitalWrite(LED_PIN, a);
-  //Serial.println(bufferFill);
   if(bufferFill >= HEADER_LEN+PACKET_LEN) {
     a = a==HIGH ? LOW : HIGH;
   }
@@ -103,7 +105,6 @@ void recieveSerial() {
 
   int incoming;
   while(bufferFill < HEADER_LEN+PACKET_LEN && (incoming = Serial.read()) >= 0) {
-    //Serial.write(incoming);
     buffer[bufferFill] = incoming;
     if(bufferFill < HEADER_LEN) {  // Wait until valid header is recieved
       if(incoming == 0xFF ||
@@ -116,7 +117,6 @@ void recieveSerial() {
     } else {  // Recieve the packet
       bufferFill++;
     }
-    //Serial.println(bufferFill);
   }
 }
 
@@ -124,14 +124,12 @@ void setMotors() {
   int speed = (time/100)%200-100;
   
   for(int i=0; i<NUM_CONTROL; i++) {
-    startB[4] = buffer[HEADER_LEN+i*4];
-    startB[5] = buffer[HEADER_LEN+i*4+1];
-    startB[6] = buffer[HEADER_LEN+i*4+2];
-    startB[7] = buffer[HEADER_LEN+i*4+3];
-    WireSendArr(i2cAddr[i], startB);
+    pidTargetB[4] = buffer[HEADER_LEN+i*4];
+    pidTargetB[5] = buffer[HEADER_LEN+i*4+1];
+    pidTargetB[6] = buffer[HEADER_LEN+i*4+2];
+    pidTargetB[7] = buffer[HEADER_LEN+i*4+3];
+    WireSendArr(i2cAddr[i], pidTargetB);
   }
-
-  // ...
 }
 
 void setServos() {
@@ -139,14 +137,8 @@ void setServos() {
   
   int *angles = (int*)&(buffer[HEADER_LEN+NUM_CONTROL*4]);  // int is 16 bits
   for(int i=0; i<NUM_CONTROL; i++) {
-    startB[4] = buffer[HEADER_LEN+i*4];
-    startB[5] = buffer[HEADER_LEN+i*4+1];
-    startB[6] = buffer[HEADER_LEN+i*4+2];
-    startB[7] = buffer[HEADER_LEN+i*4+3];
     servos[i].write(angles[i]);
   }
-
-  // ...
 }
 
 
