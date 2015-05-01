@@ -40,6 +40,7 @@ int bufferFill = 0;
 
 unsigned long time = 0;
 unsigned long lastTime = 0;
+unsigned long lastInitTime = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -49,15 +50,7 @@ void setup() {
   digitalWrite(LED_PIN, HIGH);
   delay(250);
   
-  // Initialize I2C
-  Wire.begin();
-  for(int i=0; i<NUM_CONTROL; i++) {
-    byte addr = i2cAddr[i];
-    if(!addr) continue;
-    WireSendArr(addr, accelLimit);
-    WireSendArr(addr, setToutB);
-    WireSendArr(addr, setPID);
-  }
+  initI2C();
   
   digitalWrite(LED_PIN, LOW);
   delay(250);
@@ -81,6 +74,10 @@ void setup() {
 void loop() {
   int a = HIGH, b=0;
   time = millis();
+  if(time - lastInitTime >= 2000) {
+    lastInitTime = time;
+    initI2C();
+  }
 
   recieveSerial();
 
@@ -96,6 +93,18 @@ void loop() {
   }
   
   lastTime = time;
+}
+
+void initI2C() {
+  // Initialize I2C
+  Wire.begin();
+  for(int i=0; i<NUM_CONTROL; i++) {
+    byte addr = i2cAddr[i];
+    if(!addr) continue;
+    WireSendArr(addr, accelLimit);
+    WireSendArr(addr, setToutB);
+    WireSendArr(addr, setPID);
+  }
 }
 
 void recieveSerial() {
